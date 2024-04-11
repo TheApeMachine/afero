@@ -3,20 +3,21 @@ package s3fs
 import (
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/afero"
 )
 
 type Fs struct {
-	client S3Client
+	client *s3.Client
 	bucket string // the name of the bucket
 }
 
-func New(client S3Client, bucket string) afero.Fs {
+func New(client *s3.Client, bucket string) afero.Fs {
 	return &Fs{client: client, bucket: bucket}
 }
 
@@ -26,9 +27,10 @@ func (fs Fs) Name() string {
 
 func (fs *Fs) Create(name string) (afero.File, error) {
 	// Create an empty object in S3 to simulate file creation
-	_, err := fs.client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: &fs.bucket,
-		Key:    &name,
+	uploader := manager.NewUploader(fs.client)
+	_, err := uploader.Upload(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(fs.bucket),
+		Key:    aws.String(name),
 		Body:   bytes.NewReader([]byte{}),
 	})
 
@@ -50,24 +52,20 @@ func (fs Fs) MkdirAll(path string, perm os.FileMode) error {
 
 // Open a file from S3
 func (fs *Fs) Open(name string) (afero.File, error) {
-	resp, err := fs.client.GetObject(context.TODO(), &s3.GetObjectInput{
-		Bucket: &fs.bucket,
-		Key:    &name,
+	buf := manager.NewWriteAtBuffer([]byte{})
+
+	downloader := manager.NewDownloader(fs.client)
+	_, err := downloader.Download(context.TODO(), buf, &s3.GetObjectInput{
+		Bucket: aws.String(fs.bucket),
+		Key:    aws.String(name),
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
-	content, err := io.ReadAll(resp.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
 	file := NewS3File(fs.client, fs.bucket, name)
-	file.buffer = bytes.NewBuffer(content)
+	file.buffer = bytes.NewBuffer(buf.Bytes())
 	return file, nil
 }
 

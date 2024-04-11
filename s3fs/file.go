@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/afero"
 )
 
@@ -26,7 +27,7 @@ func (fi *FileInfo) IsDir() bool        { return fi.isDir }
 func (fi *FileInfo) Sys() interface{}   { return nil }
 
 type S3File struct {
-	client S3Client
+	client *s3.Client
 	bucket string
 	key    string
 	offset int64
@@ -36,7 +37,7 @@ type S3File struct {
 // Ensure S3File implements afero.File
 var _ afero.File = (*S3File)(nil)
 
-func NewS3File(client S3Client, bucket, key string) *S3File {
+func NewS3File(client *s3.Client, bucket, key string) *S3File {
 	return &S3File{
 		client: client,
 		bucket: bucket,
